@@ -1,0 +1,5 @@
+{
+  "name": "感知序章 | Perception Prologue",
+  "description": "一个基于手势互动的沉浸式视觉体验网站，探索传统与柔性的边界。",
+  "requestFramePermissions": ["camera"]
+}
