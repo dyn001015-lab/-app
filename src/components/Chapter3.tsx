@@ -24,6 +24,76 @@ const LOW_SATURATION_COLORS = [
   '#ACAC7A'  // Muted Yellow
 ];
 
+const DIGITS: Record<string, number[][]> = {
+  '0': [
+    [0, 1, 1, 0],
+    [1, 0, 0, 1],
+    [1, 0, 0, 1],
+    [1, 0, 0, 1],
+    [0, 1, 1, 0],
+  ],
+  '1': [
+    [0, 1, 0, 0],
+    [1, 1, 0, 0],
+    [0, 1, 0, 0],
+    [0, 1, 0, 0],
+    [0, 1, 0, 0],
+  ],
+  '2': [
+    [0, 1, 1, 0],
+    [1, 0, 0, 1],
+    [0, 0, 1, 0],
+    [0, 1, 0, 0],
+    [1, 1, 1, 1],
+  ],
+  '3': [
+    [0, 1, 1, 0],
+    [1, 0, 0, 1],
+    [0, 0, 1, 1],
+    [0, 0, 0, 1],
+    [0, 1, 1, 0],
+  ],
+  '4': [
+    [1, 0, 0, 1],
+    [1, 0, 0, 1],
+    [1, 1, 1, 1],
+    [0, 0, 0, 1],
+    [0, 0, 0, 1],
+  ]
+};
+
+const DotDigit = ({ digit, isActive, isCompleted }: { digit: string, isActive: boolean, isCompleted: boolean }) => {
+  const grid = DIGITS[digit] || DIGITS['0'];
+  return (
+    <div className="flex flex-col gap-[2px]">
+      {grid.map((row, rIdx) => (
+        <div key={rIdx} className="flex gap-[2px]">
+          {row.map((val, cIdx) => (
+            <div 
+              key={cIdx} 
+              className={`w-1 h-1 md:w-1.5 md:h-1.5 rounded-full transition-colors duration-300 ${
+                val 
+                  ? (isActive ? 'bg-black' : isCompleted ? 'bg-black/40' : 'bg-black/15') 
+                  : 'bg-transparent'
+              }`}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const DotNumber = ({ number, isActive, isCompleted }: { number: number, isActive: boolean, isCompleted: boolean }) => {
+  const str = `0${number + 1}`;
+  return (
+    <div className="flex gap-2">
+      <DotDigit digit={str[0]} isActive={isActive} isCompleted={isCompleted} />
+      <DotDigit digit={str[1]} isActive={isActive} isCompleted={isCompleted} />
+    </div>
+  );
+};
+
 // Helper function to dynamically find opaque pixels (dots) in the user's image
 const extractHotspots = (src: string): Promise<{dx: number, dy: number, radius: number}[]> => {
   return new Promise((resolve) => {
@@ -277,14 +347,14 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
     <div className="absolute inset-0 w-full h-full bg-[#F4F4F4] z-40 overflow-hidden flex">
       {/* Left Menu Area (1/4) */}
       <div className="relative w-1/4 h-full border-r border-black/5 flex flex-col pt-12 bg-white/50 backdrop-blur-sm z-50">
-        <div className="px-12 space-y-2 mb-12">
+        <div className="px-12 space-y-2 mb-8 shrink-0">
           <div className="flex items-center gap-3 text-[10px] tracking-[0.2em] uppercase opacity-40 text-black">
             <span>Chapter 03</span>
           </div>
           <h1 className="text-2xl font-light italic serif tracking-tighter text-black">秩序互动</h1>
         </div>
 
-        <div className="relative flex-1 flex flex-col w-full pb-12">
+        <div className="relative flex-1 flex flex-col w-full pb-12 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           <div className="absolute top-0 bottom-12 left-1/2 w-[1px] bg-black/5 -translate-x-1/2 -z-10" />
           
           {[0, 1, 2, 3].map(i => {
@@ -293,26 +363,24 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
             return (
               <div 
                 key={i} 
-                className="flex-1 flex items-center justify-center relative w-full cursor-pointer hover:bg-black/5 transition-colors"
+                className="flex-1 min-h-[100px] flex items-center justify-center relative w-full cursor-pointer hover:bg-black/5 transition-colors"
                 onClick={() => handleMenuClick(i)}
               >
                 <motion.div 
                   animate={{ 
-                    scale: isActive ? 1.2 : 1,
-                    opacity: isActive ? 1 : (isCompleted ? 0.5 : 0.2),
-                    x: isActive ? 10 : 0
+                    scale: isActive ? 1.1 : 1,
+                    x: isActive ? 12 : 0
                   }}
-                  transition={{ duration: 0.3, ease: "easeOut" }}
-                  className="text-5xl font-light serif italic text-black"
+                  transition={{ duration: 0.4, ease: "easeOut" }}
                 >
-                  0{i + 1}
+                  <DotNumber number={i} isActive={isActive} isCompleted={isCompleted} />
                 </motion.div>
                 <motion.div 
                   animate={{
                     scale: isActive ? 1 : 0,
                     opacity: isActive ? 1 : 0
                   }}
-                  className="absolute left-1/2 -translate-x-12 w-1.5 h-1.5 rounded-full bg-black"
+                  className="absolute left-1/2 -translate-x-16 w-1.5 h-1.5 rounded-full bg-black"
                 />
               </div>
             );
