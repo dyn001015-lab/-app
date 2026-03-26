@@ -183,11 +183,219 @@ interface InteractionNode {
 interface MenuState {
   nodes: InteractionNode[];
   completed: boolean;
+  precision: number;
   color: string;
+  progress: number;
 }
 
+const FloatingDots = ({ 
+  nodes, 
+  handPositions,
+  isPinching,
+  isTriggered,
+  precision,
+  onProgress
+}: { 
+  nodes: any[], 
+  handPositions: {x: number, y: number}[],
+  isPinching: boolean,
+  isTriggered: boolean,
+  precision: number,
+  onProgress: (progress: number) => void
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const dotsRef = useRef<any[]>([]);
+  const requestRef = useRef<number>();
+
+  useEffect(() => {
+    if (nodes && nodes.length > 0) {
+      dotsRef.current = nodes.map(node => ({
+        id: node.id,
+        targetX: node.dx,
+        targetY: node.dy,
+        x: (Math.random() - 0.5) * 500,
+        y: (Math.random() - 0.5) * 500,
+        vx: 0,
+        vy: 0,
+        radius: node.radius,
+        baseFloatVx: (Math.random() - 0.5) * 1.5,
+        baseFloatVy: (Math.random() - 0.5) * 1.5,
+        finalTargetSet: false,
+        finalX: 0,
+        finalY: 0,
+        isSettled: false,
+        alpha: 1,
+        burstAlpha: 0,
+        trail: []
+      }));
+    }
+  }, [nodes]);
+
+  const stateRef = useRef({ handPositions, isPinching, isTriggered, precision });
+  useEffect(() => {
+    stateRef.current = { handPositions, isPinching, isTriggered, precision };
+  }, [handPositions, isPinching, isTriggered, precision]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      
+      const { handPositions: hPos, isPinching: pinching, isTriggered: triggered, precision: prec } = stateRef.current;
+      
+      let settledCount = 0;
+
+      dotsRef.current.forEach(dot => {
+        if (triggered) {
+          if (!dot.finalTargetSet) {
+             dot.finalX = dot.targetX;
+             dot.finalY = dot.targetY;
+             dot.finalTargetSet = true;
+          }
+          if (!dot.isSettled) {
+             dot.isSettled = true;
+             dot.burstAlpha = 1;
+          }
+          // Fast forward snap
+          dot.x += (dot.finalX - dot.x) * 0.25;
+          dot.y += (dot.finalY - dot.y) * 0.25;
+          settledCount++;
+        } else {
+          dot.finalTargetSet = false;
+          
+          if (dot.isSettled) {
+             // Keep it settled
+             dot.x = dot.targetX;
+             dot.y = dot.targetY;
+             settledCount++;
+          } else {
+            // Floating
+            dot.x += dot.baseFloatVx;
+            dot.y += dot.baseFloatVy;
+            
+            // Bounce off edges
+            if (dot.x < -250 || dot.x > 250) dot.baseFloatVx *= -1;
+            if (dot.y < -250 || dot.y > 250) dot.baseFloatVy *= -1;
+            
+            // Attraction from hands
+            let isAttracted = false;
+            hPos.forEach(hand => {
+              const dx = dot.x - hand.x;
+              const dy = dot.y - hand.y;
+              const d = Math.hypot(dx, dy);
+              
+              const attractionRadius = pinching ? 150 : 80;
+              const attractionForce = pinching ? 4.0 : 1.5;
+
+              if (d < attractionRadius) {
+                isAttracted = true;
+                // Pull towards target position instead of hand
+                const targetDx = dot.targetX - dot.x;
+                const targetDy = dot.targetY - dot.y;
+                const targetDist = Math.hypot(targetDx, targetDy);
+                
+                if (targetDist > 0) {
+                   dot.vx += (targetDx / targetDist) * attractionForce;
+                   dot.vy += (targetDy / targetDist) * attractionForce;
+                }
+              }
+            });
+
+            // Check if it reached the target
+            const distToTarget = Math.hypot(dot.targetX - dot.x, dot.targetY - dot.y);
+            if (distToTarget < 15) {
+               dot.isSettled = true;
+               dot.burstAlpha = 1;
+               dot.x = dot.targetX;
+               dot.y = dot.targetY;
+               dot.vx = 0;
+               dot.vy = 0;
+            } else {
+              // Friction
+              dot.vx *= 0.88;
+              dot.vy *= 0.88;
+              dot.x += dot.vx;
+              dot.y += dot.vy;
+            }
+          }
+        }
+        
+        if (dot.isSettled) {
+           dot.alpha = Math.max(0, dot.alpha - 0.05);
+        } else {
+           dot.alpha = Math.min(1, dot.alpha + 0.05);
+        }
+        
+        // Update trail
+        if (!dot.isSettled || triggered) {
+           dot.trail.push({x: dot.x, y: dot.y});
+           if (dot.trail.length > 5) dot.trail.shift();
+        } else {
+           if (dot.trail.length > 0) dot.trail.shift();
+        }
+
+        // Draw trail
+        if (dot.trail.length > 1 && dot.alpha > 0) {
+           ctx.beginPath();
+           ctx.moveTo(centerX + dot.trail[0].x, centerY + dot.trail[0].y);
+           for (let i = 1; i < dot.trail.length; i++) {
+              ctx.lineTo(centerX + dot.trail[i].x, centerY + dot.trail[i].y);
+           }
+           ctx.strokeStyle = `rgba(120, 120, 120, ${0.3 * dot.alpha})`;
+           ctx.lineWidth = dot.radius;
+           ctx.lineCap = 'round';
+           ctx.stroke();
+        }
+
+        if (dot.alpha > 0) {
+           ctx.beginPath();
+           let drawX = centerX + dot.x;
+           let drawY = centerY + dot.y;
+           
+           ctx.arc(drawX, drawY, dot.radius, 0, Math.PI * 2);
+           ctx.fillStyle = `rgba(120, 120, 120, ${0.6 * dot.alpha})`;
+           ctx.fill();
+        }
+
+        // Draw burst effect
+        if (dot.burstAlpha > 0) {
+           ctx.beginPath();
+           ctx.arc(centerX + dot.x, centerY + dot.y, dot.radius * (2 - dot.burstAlpha) * 3, 0, Math.PI * 2);
+           ctx.fillStyle = `rgba(255, 255, 255, ${dot.burstAlpha})`;
+           ctx.fill();
+           dot.burstAlpha -= 0.05;
+        }
+      });
+      
+      if (!triggered && dotsRef.current.length > 0) {
+         const currentProgress = settledCount / dotsRef.current.length;
+         onProgress(currentProgress);
+      }
+
+      requestRef.current = requestAnimationFrame(animate);
+    };
+    
+    requestRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(requestRef.current!);
+  }, [onProgress]);
+
+  return (
+    <canvas 
+      ref={canvasRef} 
+      width={500} 
+      height={500} 
+      className="absolute inset-0 pointer-events-none z-20"
+    />
+  );
+};
+
 export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
-  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0, isPinching: false });
   const isPinchingRef = useRef(false);
   const [activeMenu, setActiveMenu] = useState<number>(0);
   const [menuStates, setMenuStates] = useState<Record<number, MenuState>>({});
@@ -201,6 +409,39 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
     };
   };
 
+  // Derived state calculated during render
+  let handPositions: {x: number, y: number}[] = [];
+  let isPinching = false;
+  
+  const indexTip = hands.length > 0 ? getScreenCoords(hands[0][8]) : { x: 0, y: 0 };
+  const thumbTip = hands.length > 0 ? getScreenCoords(hands[0][4]) : { x: 0, y: 0 };
+  const pinchDist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+
+  if (hands.length > 0) {
+    if (!isPinchingRef.current && pinchDist < 80) isPinchingRef.current = true;
+    else if (isPinchingRef.current && pinchDist > 110) isPinchingRef.current = false;
+    isPinching = isPinchingRef.current;
+  } else {
+    isPinchingRef.current = false;
+  }
+  const cursorPos = { ...indexTip, isPinching: isPinchingRef.current };
+
+  const rightCenterX = dimensions.width * 0.25 + (dimensions.width * 0.75) / 2;
+  const rightCenterY = dimensions.height / 2;
+
+  if (hands.length >= 2) {
+    const hand1 = getScreenCoords(hands[0][8]);
+    const hand2 = getScreenCoords(hands[1][8]);
+    handPositions = [
+      { x: hand1.x - rightCenterX, y: hand1.y - rightCenterY },
+      { x: hand2.x - rightCenterX, y: hand2.y - rightCenterY }
+    ];
+  } else if (hands.length === 1) {
+    handPositions = [
+      { x: indexTip.x - rightCenterX, y: indexTip.y - rightCenterY }
+    ];
+  }
+
   // Initialize state and extract actual dot coordinates for the active menu
   useEffect(() => {
     if (!initializedMenus.current.has(activeMenu)) {
@@ -211,7 +452,7 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
       // Initial empty state while loading coordinates
       setMenuStates(prev => ({
         ...prev,
-        [activeMenu]: { nodes: [], completed: false, color: randomColor }
+        [activeMenu]: { nodes: [], completed: false, precision: 1, color: randomColor, progress: 0 }
       }));
 
       // Dynamically find the dots in the user's image
@@ -239,30 +480,7 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
   }, [activeMenu]);
 
   useEffect(() => {
-    if (hands.length === 0) {
-      isPinchingRef.current = false;
-      return;
-    }
-
-    const hand1 = hands[0];
-    
-    const indexTip = getScreenCoords(hand1[8]);
-    const thumbTip = getScreenCoords(hand1[4]);
-
-    const dist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
-    let isPinching = isPinchingRef.current;
-    if (!isPinching && dist < 80) {
-      isPinching = true;
-    } else if (isPinching && dist > 110) {
-      isPinching = false;
-    }
-    const wasPinching = isPinchingRef.current;
-    isPinchingRef.current = isPinching;
-
-    setCursorPos(prev => {
-      if (Math.abs(prev.x - indexTip.x) < 0.1 && Math.abs(prev.y - indexTip.y) < 0.1 && prev.isPinching === isPinching) return prev;
-      return { ...indexTip, isPinching };
-    });
+    if (hands.length === 0) return;
 
     // Left Menu Selection (Left 25% of screen)
     if (indexTip.x < dimensions.width * 0.25) {
@@ -282,49 +500,13 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
           [clampedZone]: {
             ...prev[clampedZone],
             completed: false,
+            progress: 0,
             nodes: prev[clampedZone].nodes.map(n => ({ ...n, activated: false }))
           }
         }));
       }
     } 
-    // Right Canvas Interaction
-    else {
-      const currentState = menuStates[activeMenu];
-      if (currentState && !currentState.completed && currentState.nodes.length > 0) {
-        // Center of the right 3/4 area
-        const centerX = dimensions.width * 0.25 + (dimensions.width * 0.75) / 2;
-        const centerY = dimensions.height / 2;
-        
-        let changed = false;
-        const newNodes = currentState.nodes.map(node => {
-          if (!node.activated) {
-            const nodeGlobalX = centerX + node.dx;
-            const nodeGlobalY = centerY + node.dy;
-            const nodeDist = Math.hypot(indexTip.x - nodeGlobalX, indexTip.y - nodeGlobalY);
-            
-            // Activate by simply hovering over the node (larger hit area, no pinch required)
-            if (nodeDist < 80) { 
-              changed = true;
-              return { ...node, activated: true };
-            }
-          }
-          return node;
-        });
-
-        if (changed) {
-          const allActivated = newNodes.every(n => n.activated);
-          setMenuStates(prev => ({
-            ...prev,
-            [activeMenu]: {
-              ...prev[activeMenu],
-              nodes: newNodes,
-              completed: allActivated
-            }
-          }));
-        }
-      }
-    }
-  }, [hands, dimensions, activeMenu, menuStates]);
+  }, [hands, dimensions, activeMenu, menuStates, indexTip.x, indexTip.y]);
 
   const handleMenuClick = (index: number) => {
     setActiveMenu(index);
@@ -335,7 +517,32 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
         [index]: {
           ...prev[index],
           completed: false,
+          progress: 0,
           nodes: prev[index].nodes.map(n => ({ ...n, activated: false }))
+        }
+      };
+    });
+  };
+
+  const handleProgressUpdate = (progress: number) => {
+    setMenuStates(prev => {
+      const current = prev[activeMenu];
+      if (!current) return prev;
+      
+      const isCompleted = current.completed || progress >= 0.98;
+      
+      // Throttle state updates to prevent infinite re-renders
+      if (Math.abs(current.progress - progress) < 0.01 && current.completed === isCompleted) {
+        return prev;
+      }
+      
+      return {
+        ...prev,
+        [activeMenu]: {
+          ...current,
+          progress,
+          completed: isCompleted,
+          precision: 1
         }
       };
     });
@@ -392,8 +599,30 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
         </div>
       </div>
 
+      {/* Flowing Halo Background Effect */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+        {currentState && !currentState.completed && (
+          <motion.div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[100px] opacity-30"
+            style={{
+              background: `radial-gradient(circle, ${currentState.color} 0%, transparent 70%)`
+            }}
+            animate={{
+              scale: [1, 1.2, 1],
+              opacity: [0.2, 0.4, 0.2],
+              rotate: [0, 90, 0]
+            }}
+            transition={{
+              duration: 10,
+              repeat: Infinity,
+              ease: "linear"
+            }}
+          />
+        )}
+      </div>
+
       {/* Right Canvas Area (3/4) */}
-      <div className="relative w-3/4 h-full flex items-center justify-center">
+      <div className="relative w-3/4 h-full flex items-center justify-center z-10">
         {/* Global Noise Overlay for Paper Texture */}
         <div 
           className="absolute inset-0 pointer-events-none opacity-[0.4] mix-blend-multiply z-50" 
@@ -407,107 +636,78 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
           <div className="absolute top-0 left-1/2 w-[1px] h-full bg-black" />
         </div>
 
+        {/* Order Progress Bar */}
+        {currentState && (
+          <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-64 h-1 bg-black/10 rounded-full overflow-hidden z-50">
+            <motion.div 
+              className="h-full"
+              style={{ backgroundColor: currentState.color }}
+              animate={{ width: `${currentState.progress * 100}%` }}
+              transition={{ duration: 0.2 }}
+            />
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           {currentState && (
             <motion.div
               key={activeMenu}
               initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
+              animate={{ 
+                opacity: 1, 
+                scale: currentState.completed ? 1 : 0.85,
+                boxShadow: currentState.completed ? 'none' : `inset 0 0 50px rgba(0,0,0,0.05)`
+              }}
               exit={{ opacity: 0, scale: 1.02 }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="relative w-[500px] h-[500px] flex items-center justify-center"
+              className="relative w-[500px] h-[500px] flex items-center justify-center rounded-full"
             >
-              {/* Perfect Circular Halos (Rendered behind the dots) */}
-              <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${currentState.completed ? 'opacity-0' : 'opacity-100'}`}>
-                {currentState.nodes.map(node => {
-                  const innerRadius = node.radius * 3.5;
-                  const outerRadius = node.radius * 6.5;
-                  return (
-                    <div 
-                      key={`halo-${node.id}`} 
-                      className="absolute pointer-events-none" 
-                      style={{ left: `calc(50% + ${node.dx}px)`, top: `calc(50% + ${node.dy}px)` }}
-                    >
-                      {/* Outer Halo */}
-                      <div 
-                        className="absolute rounded-full bg-black/[0.04] -translate-x-1/2 -translate-y-1/2"
-                        style={{ width: outerRadius * 2, height: outerRadius * 2 }}
-                      />
-                      {/* Inner Halo */}
-                      <div 
-                        className="absolute rounded-full bg-black/[0.08] -translate-x-1/2 -translate-y-1/2"
-                        style={{ width: innerRadius * 2, height: innerRadius * 2 }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Base Dot Asset */}
-              <img 
-                src={DOT_ASSETS[activeMenu]} 
-                alt="Dot pattern"
-                className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-1000 z-10 ${currentState.completed ? 'opacity-20' : 'opacity-90'}`}
-                referrerPolicy="no-referrer"
-                crossOrigin="anonymous"
+              {/* Floating Dots Canvas */}
+              <FloatingDots 
+                nodes={currentState.nodes} 
+                handPositions={handPositions}
+                isPinching={isPinching}
+                isTriggered={currentState.completed} 
+                precision={currentState.precision}
+                onProgress={handleProgressUpdate}
               />
 
-              {/* Interactive Nodes (Only show if not completed) */}
-              {!currentState.completed && currentState.nodes.map(node => (
-                <AnimatePresence key={node.id}>
-                  {!node.activated && (
-                    <motion.div
-                      exit={{ scale: 0, opacity: 0 }}
-                      className="absolute w-16 h-16 -ml-8 -mt-8 flex items-center justify-center z-20"
-                      style={{ left: `calc(50% + ${node.dx}px)`, top: `calc(50% + ${node.dy}px)` }}
-                    >
-                      {/* Subtle breathing ring to indicate interactivity, NO artificial dot */}
-                      <motion.div
-                        animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.6, 0.2] }}
-                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                        className="absolute inset-0 rounded-full border border-black/30"
-                      />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              ))}
-
-              {/* Burst Effect on Completion */}
+              {/* Burst Effect on Completion (Light Burst) */}
               <AnimatePresence>
                 {currentState.completed && (
                   <motion.div
-                    initial={{ scale: 0, opacity: 0.8 }}
-                    animate={{ scale: 2.5, opacity: 0 }}
+                    initial={{ scale: 0, opacity: 1 }}
+                    animate={{ scale: 3, opacity: 0 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 1.5, ease: "easeOut" }}
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] rounded-full blur-3xl pointer-events-none z-10"
-                    style={{ backgroundColor: currentState.color }}
+                    transition={{ duration: 1, ease: "easeOut" }}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] rounded-full blur-2xl pointer-events-none z-10 bg-white"
                   />
                 )}
               </AnimatePresence>
 
-              {/* Final Pattern Overlay */}
+              {/* Final Pattern Overlay with Morandi Color */}
               <AnimatePresence>
-                {currentState.completed && (
+                {currentState && (
                   <motion.div
-                    initial={{ clipPath: 'circle(0% at 50% 50%)', opacity: 0 }}
-                    animate={{ clipPath: 'circle(100% at 50% 50%)', opacity: 1 }}
-                    exit={{ opacity: 0, transition: { duration: 1 } }}
-                    transition={{ duration: 2, ease: "easeInOut" }}
-                    className="absolute inset-0 z-30"
+                    animate={{ 
+                      opacity: currentState.progress,
+                      scale: currentState.completed ? 1 : 0.95
+                    }}
+                    transition={{ duration: 0.3 }}
+                    className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center"
                   >
                     <div 
                       className="w-full h-full"
-                      style={{ 
-                        backgroundColor: currentState.color,
-                        WebkitMaskImage: `url("${PATTERN_ASSETS[activeMenu]}")`,
+                      style={{
+                        WebkitMaskImage: `url(${PATTERN_ASSETS[activeMenu]})`,
                         WebkitMaskSize: 'contain',
                         WebkitMaskRepeat: 'no-repeat',
                         WebkitMaskPosition: 'center',
-                        maskImage: `url("${PATTERN_ASSETS[activeMenu]}")`,
+                        maskImage: `url(${PATTERN_ASSETS[activeMenu]})`,
                         maskSize: 'contain',
                         maskRepeat: 'no-repeat',
                         maskPosition: 'center',
+                        backgroundColor: currentState.color,
                       }}
                     />
                   </motion.div>

@@ -9,6 +9,7 @@ import { GestureManager } from './components/GestureManager';
 import { Chapter2 } from './components/Chapter2';
 import { Chapter3 } from './components/Chapter3';
 import { Chapter4 } from './components/Chapter4';
+import { Chapter5 } from './components/Chapter5';
 import { Sparkles, Hand, Wind, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ASSETS = {
@@ -21,7 +22,7 @@ const ASSETS = {
   ]
 };
 
-type Phase = 'initial' | 'dissipating' | 'flexible' | 'chapter2' | 'chapter3' | 'chapter4';
+type Phase = 'initial' | 'dissipating' | 'flexible' | 'chapter2' | 'chapter3' | 'chapter4' | 'chapter5';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('initial');
@@ -59,7 +60,10 @@ export default function App() {
 
     if (type === 'navClickLeft') {
       // Previous Page
-      if (currentPhase === 'chapter4') {
+      if (currentPhase === 'chapter5') {
+        setPhase('chapter4');
+        lastTransitionTime.current = now;
+      } else if (currentPhase === 'chapter4') {
         setPhase('chapter3');
         lastTransitionTime.current = now;
       } else if (currentPhase === 'chapter3') {
@@ -83,6 +87,9 @@ export default function App() {
         lastTransitionTime.current = now;
       } else if (currentPhase === 'chapter3') {
         setPhase('chapter4');
+        lastTransitionTime.current = now;
+      } else if (currentPhase === 'chapter4') {
+        setPhase('chapter5');
         lastTransitionTime.current = now;
       }
     }
@@ -481,6 +488,20 @@ export default function App() {
               <Chapter4 hands={hands} dimensions={dimensions} />
             </motion.div>
           )}
+
+          {/* Chapter 5 */}
+          {phase === 'chapter5' && (
+            <motion.div
+              key="chapter5"
+              initial={{ opacity: 0, x: 200 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -200 }}
+              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute inset-0"
+            >
+              <Chapter5 hands={hands} dimensions={dimensions} />
+            </motion.div>
+          )}
         </AnimatePresence>
       </motion.div>
 
@@ -536,7 +557,8 @@ export default function App() {
           className="fixed top-1/2 left-6 -translate-y-1/2 w-8 h-8 rounded-full bg-white/40 backdrop-blur-md border border-black/10 shadow-lg flex items-center justify-center z-[9999] cursor-pointer hover:bg-white/80 hover:scale-110 active:scale-95 transition-all duration-300 group"
           onClick={() => {
             const currentPhase = phaseRef.current;
-            if (currentPhase === 'chapter4') setPhase('chapter3');
+            if (currentPhase === 'chapter5') setPhase('chapter4');
+            else if (currentPhase === 'chapter4') setPhase('chapter3');
             else if (currentPhase === 'chapter3') setPhase('chapter2');
             else if (currentPhase === 'chapter2') setPhase('flexible');
           }}
@@ -557,6 +579,7 @@ export default function App() {
             } else if (currentPhase === 'flexible') setPhase('chapter2');
             else if (currentPhase === 'chapter2') setPhase('chapter3');
             else if (currentPhase === 'chapter3') setPhase('chapter4');
+            else if (currentPhase === 'chapter4') setPhase('chapter5');
           }}
         >
           <ChevronRight size={16} className="opacity-60 group-hover:opacity-100 transition-opacity text-black" />
