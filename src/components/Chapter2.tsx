@@ -65,11 +65,19 @@ export const Chapter2: React.FC<Chapter2Props> = ({ hands, dimensions }) => {
     return stages;
   }, []);
 
-  const getScreenCoords = (landmark: any) => {
+  const getLocalCoords = (landmark: any) => {
     if (!landmark) return { x: 0, y: 0 };
     return {
       x: (1 - landmark.x) * dimensions.width,
       y: landmark.y * dimensions.height
+    };
+  };
+
+  const getViewportCoords = (landmark: any) => {
+    if (!landmark) return { x: 0, y: 0 };
+    return {
+      x: (1 - landmark.x) * window.innerWidth,
+      y: landmark.y * window.innerHeight
     };
   };
 
@@ -92,12 +100,13 @@ export const Chapter2: React.FC<Chapter2Props> = ({ hands, dimensions }) => {
 
     const hand1 = hands[0];
     
-    const indexTip = getScreenCoords(hand1[8]);
-    const palm = getScreenCoords(hand1[9]);
+    const indexTipLocal = getLocalCoords(hand1[8]);
+    const indexTipViewport = getViewportCoords(hand1[8]);
+    const palmLocal = getLocalCoords(hand1[9]);
 
     setCursorPos(prev => {
-      if (Math.abs(prev.x - indexTip.x) < 0.1 && Math.abs(prev.y - indexTip.y) < 0.1) return prev;
-      return indexTip;
+      if (Math.abs(prev.x - indexTipLocal.x) < 0.1 && Math.abs(prev.y - indexTipLocal.y) < 0.1) return prev;
+      return indexTipLocal;
     });
 
     // --- Hover & Click Logic ---
@@ -108,8 +117,8 @@ export const Chapter2: React.FC<Chapter2Props> = ({ hands, dimensions }) => {
         cardRefs.current.forEach((card, index) => {
           if (!card) return;
           const rect = card.getBoundingClientRect();
-          if (indexTip.x >= rect.left && indexTip.x <= rect.right &&
-              indexTip.y >= rect.top && indexTip.y <= rect.bottom) {
+          if (indexTipViewport.x >= rect.left && indexTipViewport.x <= rect.right &&
+              indexTipViewport.y >= rect.top && indexTipViewport.y <= rect.bottom) {
             currentHover = `card-${index}`;
           }
         });
@@ -117,8 +126,8 @@ export const Chapter2: React.FC<Chapter2Props> = ({ hands, dimensions }) => {
         if (closeBtnRef.current) {
           const rect = closeBtnRef.current.getBoundingClientRect();
           const padding = 40; // Generous padding
-          if (indexTip.x >= rect.left - padding && indexTip.x <= rect.right + padding &&
-              indexTip.y >= rect.top - padding && indexTip.y <= rect.bottom + padding) {
+          if (indexTipViewport.x >= rect.left - padding && indexTipViewport.x <= rect.right + padding &&
+              indexTipViewport.y >= rect.top - padding && indexTipViewport.y <= rect.bottom + padding) {
             currentHover = 'close-btn';
           }
         }
@@ -174,7 +183,7 @@ export const Chapter2: React.FC<Chapter2Props> = ({ hands, dimensions }) => {
     
     if (selectedCard === 1) {
       setTailPositions(prev => {
-        const newPos = [...prev, { x: indexTip.x, y: indexTip.y }];
+        const newPos = [...prev, { x: indexTipLocal.x, y: indexTipLocal.y }];
         if (newPos.length > 20) newPos.shift();
         return newPos;
       });
@@ -183,8 +192,8 @@ export const Chapter2: React.FC<Chapter2Props> = ({ hands, dimensions }) => {
     }
     
     if (selectedCard === 2) {
-      const thumbTip = getScreenCoords(hand1[4]);
-      const dist = Math.sqrt(Math.pow(indexTip.x - thumbTip.x, 2) + Math.pow(indexTip.y - thumbTip.y, 2));
+      const thumbTip = getLocalCoords(hand1[4]);
+      const dist = Math.sqrt(Math.pow(indexTipLocal.x - thumbTip.x, 2) + Math.pow(indexTipLocal.y - thumbTip.y, 2));
       const amount = Math.max(0, 1 - (dist / 150));
       setAsciiAmount(amount);
     }

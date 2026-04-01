@@ -9,7 +9,6 @@ import { GestureManager } from './components/GestureManager';
 import { Chapter2 } from './components/Chapter2';
 import { Chapter3 } from './components/Chapter3';
 import { Chapter4 } from './components/Chapter4';
-import { Chapter5 } from './components/Chapter5';
 import { Sparkles, Hand, Wind, Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ASSETS = {
@@ -22,7 +21,7 @@ const ASSETS = {
   ]
 };
 
-type Phase = 'initial' | 'dissipating' | 'flexible' | 'chapter2' | 'chapter3' | 'chapter4' | 'chapter5';
+type Phase = 'initial' | 'dissipating' | 'flexible' | 'chapter2' | 'chapter3' | 'chapter4';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('initial');
@@ -35,7 +34,9 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particles = useRef<any[]>([]);
 
-  const [dimensions, setDimensions] = useState({ width: 1000, height: 1000 });
+  const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [scale, setScale] = useState(1);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Keep phaseRef in sync with phase state
   useEffect(() => {
@@ -44,56 +45,17 @@ export default function App() {
 
   useEffect(() => {
     const updateDimensions = () => {
-      setDimensions({ width: window.innerWidth, height: window.innerHeight });
+      setDimensions({ width: 1440, height: 900 });
+      const scaleX = window.innerWidth / 1440;
+      const scaleY = window.innerHeight / 900;
+      setScale(Math.min(scaleX, scaleY));
     };
     updateDimensions();
     window.addEventListener('resize', updateDimensions);
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
-  const handleGesture = useCallback((type: 'swipe' | 'clench' | 'open' | 'swipeLeft' | 'swipeRight' | 'navClickLeft' | 'navClickRight', value: number) => {
-    const currentPhase = phaseRef.current;
-    const now = Date.now();
-    
-    // 800ms Cooldown
-    if (now - lastTransitionTime.current < 800) return;
-
-    if (type === 'navClickLeft') {
-      // Previous Page
-      if (currentPhase === 'chapter5') {
-        setPhase('chapter4');
-        lastTransitionTime.current = now;
-      } else if (currentPhase === 'chapter4') {
-        setPhase('chapter3');
-        lastTransitionTime.current = now;
-      } else if (currentPhase === 'chapter3') {
-        setPhase('chapter2');
-        lastTransitionTime.current = now;
-      } else if (currentPhase === 'chapter2') {
-        setPhase('flexible');
-        lastTransitionTime.current = now;
-      }
-    } else if (type === 'navClickRight') {
-      // Next Page
-      if (currentPhase === 'initial') {
-        setPhase('dissipating');
-        setTimeout(() => setPhase('flexible'), 2000);
-        lastTransitionTime.current = now;
-      } else if (currentPhase === 'flexible') {
-        setPhase('chapter2');
-        lastTransitionTime.current = now;
-      } else if (currentPhase === 'chapter2') {
-        setPhase('chapter3');
-        lastTransitionTime.current = now;
-      } else if (currentPhase === 'chapter3') {
-        setPhase('chapter4');
-        lastTransitionTime.current = now;
-      } else if (currentPhase === 'chapter4') {
-        setPhase('chapter5');
-        lastTransitionTime.current = now;
-      }
-    }
-
+  const handleGesture = useCallback((type: 'swipe' | 'clench' | 'open' | 'swipeLeft' | 'swipeRight', value: number) => {
     if (type === 'clench') {
       setClenchValue(value);
       setOpenValue(0);
@@ -117,6 +79,42 @@ export default function App() {
       return newHands;
     });
   }, []);
+
+  // Touch detection for navigation
+  useEffect(() => {
+    if (hands.length > 0 && hands[0][8]) {
+      const now = Date.now();
+      if (now - lastTransitionTime.current < 4000) return;
+
+      const x = (1 - hands[0][8].x) * window.innerWidth;
+      const y = hands[0][8].y * window.innerHeight;
+
+      const prevBtn = document.getElementById('jump-prev');
+      const nextBtn = document.getElementById('jump-next');
+
+      if (prevBtn) {
+        const rect = prevBtn.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        if (Math.hypot(x - cx, y - cy) < 35) {
+          prevBtn.click();
+          lastTransitionTime.current = now;
+          return;
+        }
+      }
+
+      if (nextBtn) {
+        const rect = nextBtn.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        if (Math.hypot(x - cx, y - cy) < 35) {
+          nextBtn.click();
+          lastTransitionTime.current = now;
+          return;
+        }
+      }
+    }
+  }, [hands]);
 
   // Particle System for dissipation
   useEffect(() => {
@@ -203,8 +201,13 @@ export default function App() {
   }, [phase]);
 
   return (
-    <div className={`min-h-screen ${phase === 'flexible' ? 'bg-white' : 'bg-[#E4E3E0]'} transition-colors duration-1000 text-[#141414] font-mono selection:bg-[#141414] selection:text-[#E4E3E0] overflow-hidden flex flex-col items-center justify-center relative`}>
-      {/* Header Info */}
+    <div className="fixed inset-0 bg-[#1a1a1a] flex items-center justify-center overflow-hidden">
+      <div 
+        ref={containerRef}
+        className={`relative w-[1440px] h-[900px] origin-center ${phase === 'flexible' ? 'bg-white' : 'bg-[#E4E3E0]'} transition-colors duration-1000 text-[#141414] font-mono selection:bg-[#141414] selection:text-[#E4E3E0] overflow-hidden flex flex-col items-center justify-center shadow-2xl`}
+        style={{ transform: `scale(${scale})` }}
+      >
+        {/* Header Info */}
       <AnimatePresence>
         {phase !== 'chapter2' && phase !== 'chapter3' && phase !== 'chapter4' && (
           <motion.div 
@@ -485,28 +488,15 @@ export default function App() {
               transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
               className="absolute inset-0"
             >
-              <Chapter4 hands={hands} dimensions={dimensions} />
+              <Chapter4 hands={hands} dimensions={dimensions} scale={scale} />
             </motion.div>
           )}
 
-          {/* Chapter 5 */}
-          {phase === 'chapter5' && (
-            <motion.div
-              key="chapter5"
-              initial={{ opacity: 0, x: 200 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -200 }}
-              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-              className="absolute inset-0"
-            >
-              <Chapter5 hands={hands} dimensions={dimensions} />
-            </motion.div>
-          )}
         </AnimatePresence>
       </motion.div>
 
       {/* Interaction Guide */}
-      <div className="fixed bottom-12 left-12 flex items-center gap-8 z-10">
+      <div className="absolute bottom-12 left-12 flex items-center gap-8 z-10">
         <div className="flex flex-col gap-1">
           <div className="text-[9px] uppercase tracking-widest opacity-30">Status</div>
           <div className="flex items-center gap-2">
@@ -551,43 +541,45 @@ export default function App() {
       )}
 
       {/* Navigation Guide Icons */}
-      {phase !== 'initial' && (
-        <button 
-          id="jump-prev"
-          className="fixed top-1/2 left-6 -translate-y-1/2 w-8 h-8 rounded-full bg-white/40 backdrop-blur-md border border-black/10 shadow-lg flex items-center justify-center z-[9999] cursor-pointer hover:bg-white/80 hover:scale-110 active:scale-95 transition-all duration-300 group"
-          onClick={() => {
-            const currentPhase = phaseRef.current;
-            if (currentPhase === 'chapter5') setPhase('chapter4');
-            else if (currentPhase === 'chapter4') setPhase('chapter3');
-            else if (currentPhase === 'chapter3') setPhase('chapter2');
-            else if (currentPhase === 'chapter2') setPhase('flexible');
-          }}
-        >
-          <ChevronLeft size={16} className="opacity-60 group-hover:opacity-100 transition-opacity text-black" />
-        </button>
-      )}
-      
-      {phase !== 'chapter4' && (
-        <button 
-          id="jump-next"
-          className="fixed top-1/2 right-6 -translate-y-1/2 w-8 h-8 rounded-full bg-white/40 backdrop-blur-md border border-black/10 shadow-lg flex items-center justify-center z-[9999] cursor-pointer hover:bg-white/80 hover:scale-110 active:scale-95 transition-all duration-300 group"
-          onClick={() => {
-            const currentPhase = phaseRef.current;
-            if (currentPhase === 'initial') {
-              setPhase('dissipating');
-              setTimeout(() => setPhase('flexible'), 2000);
-            } else if (currentPhase === 'flexible') setPhase('chapter2');
-            else if (currentPhase === 'chapter2') setPhase('chapter3');
-            else if (currentPhase === 'chapter3') setPhase('chapter4');
-            else if (currentPhase === 'chapter4') setPhase('chapter5');
-          }}
-        >
-          <ChevronRight size={16} className="opacity-60 group-hover:opacity-100 transition-opacity text-black" />
-        </button>
-      )}
+      <div className="absolute bottom-12 right-12 flex items-center gap-8 z-[9999]">
+        {phase !== 'initial' && phase !== 'dissipating' && (
+          <button 
+            id="jump-prev"
+            className="w-12 h-12 rounded-full bg-white/40 backdrop-blur-md border border-black/10 shadow-lg flex items-center justify-center cursor-pointer hover:bg-white/80 hover:scale-110 active:scale-95 transition-all duration-300 group"
+            onClick={() => {
+              const currentPhase = phaseRef.current;
+              if (currentPhase === 'chapter4') setPhase('chapter3');
+              else if (currentPhase === 'chapter3') setPhase('chapter2');
+              else if (currentPhase === 'chapter2') setPhase('flexible');
+              else if (currentPhase === 'flexible') setPhase('initial');
+            }}
+          >
+            <ChevronLeft size={24} className="opacity-60 group-hover:opacity-100 transition-opacity text-black" />
+          </button>
+        )}
+        
+        {phase !== 'chapter4' && (
+          <button 
+            id="jump-next"
+            className="w-12 h-12 rounded-full bg-white/40 backdrop-blur-md border border-black/10 shadow-lg flex items-center justify-center cursor-pointer hover:bg-white/80 hover:scale-110 active:scale-95 transition-all duration-300 group"
+            onClick={() => {
+              const currentPhase = phaseRef.current;
+              if (currentPhase === 'initial') {
+                setPhase('dissipating');
+                setTimeout(() => setPhase('flexible'), 2000);
+              } else if (currentPhase === 'flexible') setPhase('chapter2');
+              else if (currentPhase === 'chapter2') setPhase('chapter3');
+              else if (currentPhase === 'chapter3') setPhase('chapter4');
+            }}
+          >
+            <ChevronRight size={24} className="opacity-60 group-hover:opacity-100 transition-opacity text-black" />
+          </button>
+        )}
+      </div>
 
       {/* Background Texture */}
-      <div className="fixed inset-0 pointer-events-none opacity-[0.03] mix-blend-multiply bg-[url('https://www.transparenttextures.com/patterns/p6.png')]" />
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03] mix-blend-multiply bg-[url('https://www.transparenttextures.com/patterns/p6.png')]" />
+      </div>
     </div>
   );
 }

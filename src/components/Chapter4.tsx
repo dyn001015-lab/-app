@@ -307,9 +307,9 @@ export const Chapter4: React.FC<Chapter4Props> = ({ hands, dimensions }) => {
     const angle = Math.atan2(iy - ty, ix - tx) * (180 / Math.PI);
 
     let isPinching = isPinchingRef.current;
-    if (!isPinching && dist < 30) { // Further lowered threshold for maximum sensitivity
+    if (!isPinching && dist < 45) { // Adjusted for more responsive grab
       isPinching = true;
-    } else if (isPinching && dist > 60) { // Stable release threshold
+    } else if (isPinching && dist > 65) { // Adjusted for more agile release
       isPinching = false;
     }
 
@@ -423,17 +423,28 @@ export const Chapter4: React.FC<Chapter4Props> = ({ hands, dimensions }) => {
         if (deltaAngle > 180) deltaAngle -= 360;
         if (deltaAngle < -180) deltaAngle += 360;
         
-        const targetScale = Math.max(0.1, Math.min(5, (draggingRef.current.startScale || 1) * (dist / (draggingRef.current.startPinchDist || dist))));
-        const targetRotation = (draggingRef.current.startRotation || 0) + deltaAngle;
+        // Dampen scaling sensitivity to make it more comfortable
+        const distRatio = dist / (draggingRef.current.startPinchDist || dist);
+        // Apply 0.5 sensitivity to both enlarging and shrinking
+        const scaleFactor = 1 + (distRatio - 1) * 0.5;
 
-        // Apply smoothing (Low-pass filter)
-        smoothedScale.current += (targetScale - smoothedScale.current) * 0.25;
-        smoothedRotation.current += (targetRotation - smoothedRotation.current) * 0.25;
+        const targetScale = Math.max(0.1, Math.min(5, (draggingRef.current.startScale || 1) * scaleFactor));
+        const targetRotation = (draggingRef.current.startRotation || 0) + deltaAngle * 0.7;
+
+        // Apply stronger smoothing (Low-pass filter)
+        smoothedScale.current += (targetScale - smoothedScale.current) * 0.15;
+        smoothedRotation.current += (targetRotation - smoothedRotation.current) * 0.15;
+        
+        // Smooth position to prevent jitter
+        const currentX = draggingRef.current.x;
+        const currentY = draggingRef.current.y;
+        const newX = currentX + (cx - currentX) * 0.3;
+        const newY = currentY + (cy - currentY) * 0.3;
 
         const updatedState = { 
           ...draggingRef.current, 
-          x: cx, 
-          y: cy,
+          x: newX, 
+          y: newY,
           scale: smoothedScale.current,
           rotation: smoothedRotation.current
         };
@@ -442,7 +453,7 @@ export const Chapter4: React.FC<Chapter4Props> = ({ hands, dimensions }) => {
       }
     } else if (!isPinching && wasPinching) {
       // Pinch end
-      handleDrop(cx, cy);
+      handleDrop(draggingRef.current?.x || cx, draggingRef.current?.y || cy);
     }
   }, [hands, dimensions]);
 
@@ -600,7 +611,7 @@ export const Chapter4: React.FC<Chapter4Props> = ({ hands, dimensions }) => {
                             data-draggable="true"
                             data-src={src}
                             onPointerDown={(e) => handlePointerDown(e, src)}
-                            className="aspect-square bg-black/5 rounded-xl p-3 cursor-grab active:cursor-grabbing hover:bg-black/10 transition-colors flex items-center justify-center"
+                            className="aspect-square bg-black/5 rounded-xl p-1 cursor-grab active:cursor-grabbing hover:bg-black/10 transition-colors flex items-center justify-center"
                           >
                             <img src={src} className="w-full h-full object-contain mix-blend-multiply pointer-events-none" referrerPolicy="no-referrer" crossOrigin="anonymous" />
                           </div>

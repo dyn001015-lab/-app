@@ -447,12 +447,12 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
     if (!initializedMenus.current.has(activeMenu)) {
       initializedMenus.current.add(activeMenu);
       
-      const randomColor = LOW_SATURATION_COLORS[Math.floor(Math.random() * LOW_SATURATION_COLORS.length)];
+      const assignedColor = LOW_SATURATION_COLORS[activeMenu % 4];
       
       // Initial empty state while loading coordinates
       setMenuStates(prev => ({
         ...prev,
-        [activeMenu]: { nodes: [], completed: false, precision: 1, color: randomColor, progress: 0 }
+        [activeMenu]: { nodes: [], completed: false, precision: 1, color: assignedColor, progress: 0 }
       }));
 
       // Dynamically find the dots in the user's image
@@ -697,17 +697,17 @@ export const Chapter3: React.FC<Chapter3Props> = ({ hands, dimensions }) => {
                     className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center"
                   >
                     <div 
-                      className="w-full h-full"
+                      className="relative w-full h-full"
                       style={{
-                        WebkitMaskImage: `url(${PATTERN_ASSETS[activeMenu]})`,
-                        WebkitMaskSize: 'contain',
-                        WebkitMaskRepeat: 'no-repeat',
-                        WebkitMaskPosition: 'center',
-                        maskImage: `url(${PATTERN_ASSETS[activeMenu]})`,
-                        maskSize: 'contain',
-                        maskRepeat: 'no-repeat',
-                        maskPosition: 'center',
                         backgroundColor: currentState.color,
+                        WebkitMaskImage: `url(${PATTERN_ASSETS[activeMenu]})`,
+                        maskImage: `url(${PATTERN_ASSETS[activeMenu]})`,
+                        WebkitMaskSize: 'cover',
+                        maskSize: 'cover',
+                        WebkitMaskRepeat: 'no-repeat',
+                        maskRepeat: 'no-repeat',
+                        WebkitMaskPosition: 'center',
+                        maskPosition: 'center'
                       }}
                     />
                   </motion.div>

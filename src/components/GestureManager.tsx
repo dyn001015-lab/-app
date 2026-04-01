@@ -4,11 +4,14 @@ import { Hands, Results, HAND_CONNECTIONS } from '@mediapipe/hands';
 import { Camera } from '@mediapipe/camera_utils';
 
 interface GestureManagerProps {
-  onGesture: (type: 'swipe' | 'clench' | 'open' | 'swipeLeft' | 'swipeRight' | 'navClickLeft' | 'navClickRight', value: number) => void;
+  onGesture: (type: 'swipe' | 'clench' | 'open' | 'swipeLeft' | 'swipeRight', value: number) => void;
   onSwipeUpdate?: (offset: number) => void;
   onHandsUpdate?: (hands: any[]) => void;
   debug?: boolean;
 }
+
+let globalHandsInstance: Hands | null = null;
+let globalCameraInstance: Camera | null = null;
 
 export const GestureManager: React.FC<GestureManagerProps> = ({ onGesture, onSwipeUpdate, onHandsUpdate, debug = false }) => {
   const webcamRef = useRef<Webcam>(null);
@@ -19,7 +22,6 @@ export const GestureManager: React.FC<GestureManagerProps> = ({ onGesture, onSwi
   // Tracking state for swipe
   const lastX = useRef<number | null>(null);
   const swipeAccumulator = useRef(0);
-  const wasClicking = useRef(false);
 
   const onResults = useCallback((results: Results) => {
     if (!canvasRef.current) return;
@@ -45,31 +47,10 @@ export const GestureManager: React.FC<GestureManagerProps> = ({ onGesture, onSwi
       const indexTip = landmarks[8];
       const thumbTip = landmarks[4];
       
-      // Navigation Zones: Left and Right 5% edges (User's perspective)
-      // Vertically centered to match the icons (y between 0.35 and 0.65)
-      // Since camera is mirrored, x=1 is user's left, x=0 is user's right.
-      const NAV_ZONE_WIDTH = 0.08;
-      const NAV_ZONE_Y_MIN = 0.35;
-      const NAV_ZONE_Y_MAX = 0.65;
-      const isAtLeftEdge = indexTip.x > (1 - NAV_ZONE_WIDTH) && indexTip.y > NAV_ZONE_Y_MIN && indexTip.y < NAV_ZONE_Y_MAX;
-      const isAtRightEdge = indexTip.x < NAV_ZONE_WIDTH && indexTip.y > NAV_ZONE_Y_MIN && indexTip.y < NAV_ZONE_Y_MAX;
-
       const distance = Math.sqrt(
         Math.pow(thumbTip.x - indexTip.x, 2) + 
         Math.pow(thumbTip.y - indexTip.y, 2)
       );
-
-      const isClicking = distance < 0.05;
-
-      // Trigger click only once per pinch
-      if (isClicking && !wasClicking.current) {
-        if (isAtLeftEdge) {
-          onGesture('navClickLeft', 1);
-        } else if (isAtRightEdge) {
-          onGesture('navClickRight', 1);
-        }
-      }
-      wasClicking.current = isClicking;
 
       // 2. Detect Clench vs Open (Distance between thumb tip and index tip)
       // Interaction gestures are allowed everywhere, but the Chapters will restrict 
@@ -94,31 +75,6 @@ export const GestureManager: React.FC<GestureManagerProps> = ({ onGesture, onSwi
             canvasCtx.fill();
           });
         });
-
-        // Draw Navigation Zones (Edges) - Mirrored perspective
-        canvasCtx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-        // Left Edge (User's perspective, which is x > 0.9 in raw frame, drawn at (1-x) < 0.1)
-        canvasCtx.fillRect(0, NAV_ZONE_Y_MIN * canvasRef.current!.height, NAV_ZONE_WIDTH * canvasRef.current!.width, (NAV_ZONE_Y_MAX - NAV_ZONE_Y_MIN) * canvasRef.current!.height);
-        // Right Edge (User's perspective, which is x < 0.1 in raw frame, drawn at (1-x) > 0.9)
-        canvasCtx.fillRect((1 - NAV_ZONE_WIDTH) * canvasRef.current!.width, NAV_ZONE_Y_MIN * canvasRef.current!.height, NAV_ZONE_WIDTH * canvasRef.current!.width, (NAV_ZONE_Y_MAX - NAV_ZONE_Y_MIN) * canvasRef.current!.height);
-        
-        // Draw Zone Dividers
-        canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-        canvasCtx.setLineDash([5, 5]);
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(NAV_ZONE_WIDTH * canvasRef.current!.width, NAV_ZONE_Y_MIN * canvasRef.current!.height);
-        canvasCtx.lineTo(NAV_ZONE_WIDTH * canvasRef.current!.width, NAV_ZONE_Y_MAX * canvasRef.current!.height);
-        canvasCtx.moveTo((1 - NAV_ZONE_WIDTH) * canvasRef.current!.width, NAV_ZONE_Y_MIN * canvasRef.current!.height);
-        canvasCtx.lineTo((1 - NAV_ZONE_WIDTH) * canvasRef.current!.width, NAV_ZONE_Y_MAX * canvasRef.current!.height);
-        canvasCtx.stroke();
-        canvasCtx.setLineDash([]);
-
-        // Label Zones
-        canvasCtx.fillStyle = 'white';
-        canvasCtx.font = '10px Arial';
-        canvasCtx.fillText('NAV', 5, 20);
-        canvasCtx.fillText('NAV', canvasRef.current!.width - 30, 20);
-        canvasCtx.fillText('INTERACTION', canvasRef.current!.width / 2 - 35, 20);
       }
     } else {
       if (onHandsUpdate) {
@@ -138,25 +94,28 @@ export const GestureManager: React.FC<GestureManagerProps> = ({ onGesture, onSwi
   }, [onResults]);
 
   useEffect(() => {
-    const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-    });
+    if (!globalHandsInstance) {
+      globalHandsInstance = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`,
+      });
 
-    hands.setOptions({
-      maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
+      globalHandsInstance.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+    }
 
-    hands.onResults((results) => {
+    globalHandsInstance.onResults((results) => {
       onResultsRef.current(results);
     });
 
-    handsRef.current = hands;
+    handsRef.current = globalHandsInstance;
 
     return () => {
-      hands.close();
+      // Do not close hands instance to prevent WASM crash on hot reload
+      // globalHandsInstance.close();
       if (cameraRef.current) {
         cameraRef.current.stop();
       }

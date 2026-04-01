@@ -22,6 +22,8 @@ interface GrowingAsset {
   life: number;
 }
 
+let globalPoseInstance: Pose | null = null;
+
 export const SkeletonManager: React.FC<SkeletonManagerProps> = ({ assets, onComplete }) => {
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -141,19 +143,22 @@ export const SkeletonManager: React.FC<SkeletonManagerProps> = ({ assets, onComp
 
   useEffect(() => {
     let isMounted = true;
-    const pose = new Pose({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
-    });
+    
+    if (!globalPoseInstance) {
+      globalPoseInstance = new Pose({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`,
+      });
 
-    pose.setOptions({
-      modelComplexity: 1,
-      smoothLandmarks: true,
-      enableSegmentation: false,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
+      globalPoseInstance.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+    }
 
-    pose.onResults((results) => {
+    globalPoseInstance.onResults((results) => {
       if (isMounted) {
         onResultsRef.current(results);
       }
@@ -164,9 +169,9 @@ export const SkeletonManager: React.FC<SkeletonManagerProps> = ({ assets, onComp
     if (webcamRef.current && webcamRef.current.video) {
       camera = new Camera(webcamRef.current.video, {
         onFrame: async () => {
-          if (isMounted && webcamRef.current?.video) {
+          if (isMounted && webcamRef.current?.video && globalPoseInstance) {
             try {
-              await pose.send({ image: webcamRef.current.video });
+              await globalPoseInstance.send({ image: webcamRef.current.video });
             } catch (e) {
               console.error("Mediapipe Pose error:", e);
             }
@@ -181,7 +186,7 @@ export const SkeletonManager: React.FC<SkeletonManagerProps> = ({ assets, onComp
     return () => {
       isMounted = false;
       if (camera) camera.stop();
-      pose.close();
+      // globalPoseInstance.close(); // Do not close to prevent WASM crash
     };
   }, []);
 
